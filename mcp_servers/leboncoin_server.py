@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
-from scripts.leboncoin_url_generator import generate_leboncoin_url
+from scripts.leboncoin_url_generator import get_real_estate_url
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
 
 # Load environment variables
@@ -20,32 +20,6 @@ load_dotenv()
 # Create MCP server
 mcp = FastMCP("leboncoin-server")
 
-@mcp.tool()
-def generate_leboncoin_url(location: str, real_estate_type: int = 2) -> Dict[str, str]:
-    """
-    Generate a Leboncoin URL for a given location and real estate type.
-    
-    Args:
-        location: The location name (e.g., "le bourget", "paris lyon")
-        real_estate_type: Real estate type code (default: 2 for real estate sales)
-    
-    Returns:
-        Dictionary with location and generated URL
-    """
-    try:
-        url = generate_leboncoin_url(location, real_estate_type)
-        return {
-            "location": location,
-            "real_estate_type": str(real_estate_type),
-            "url": url,
-            "status": "success"
-        }
-    except Exception as e:
-        return {
-            "location": location,
-            "error": str(e),
-            "status": "error"
-        }
 
 @mcp.tool()
 def search_leboncoin_properties(location: str, api_key: Optional[str] = None) -> Dict[str, Any]:
