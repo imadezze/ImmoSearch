@@ -4,7 +4,7 @@
 
 In order to run your MCP server locally, use the following command:
 
-> python -m mcp_servers.immo_server
+> python -m mcp_servers.leboncoin_server
 
 The server will automatically start in **streamable HTTP** mode
 

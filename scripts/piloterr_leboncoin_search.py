@@ -3,7 +3,7 @@ import json
 import sys
 import os
 from dotenv import load_dotenv
-from leboncoin_url_generator import get_real_estate_url
+from .leboncoin_url_generator import get_real_estate_url
 
 # Load environment variables from .env file
 load_dotenv()
