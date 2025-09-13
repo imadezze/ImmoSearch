@@ -15,12 +15,14 @@ import requests
 import json
 import statistics
 from datetime import datetime
+from scripts.leboncoin_url_generator import get_real_estate_url
+from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
 
 # Load environment variables
 load_dotenv()
 
 # Create MCP server
-mcp = FastMCP("dvf-server")
+mcp = FastMCP("immosearch-server")
 
 class DVFAnalyzer:
     """DVF (Demandes de Valeurs Foncières) analyzer for French real estate data."""
@@ -66,8 +68,9 @@ class DVFAnalyzer:
         return sorted_transactions[:max_results]
     
     def extract_relevant_data(self, transactions: list, analysis_type: str = "sale") -> list:
-        """Extract relevant data from transactions."""
+        """Extract relevant data from transactions and remove duplicates."""
         extracted_data = []
+        seen_transactions = set()
         
         for transaction in transactions:
             valeur_fonciere = transaction.get('valeur_fonciere')
@@ -85,6 +88,16 @@ class DVFAnalyzer:
                 valeur_fonciere > 0):
                 
                 prix_m2 = valeur_fonciere / surface_relle_bati
+                
+                # Create a unique key to identify duplicates
+                # Using date, value, surface, and street to identify same transaction
+                unique_key = (date_mutation, valeur_fonciere, surface_relle_bati, voie)
+                
+                # Skip if we've already seen this exact transaction
+                if unique_key in seen_transactions:
+                    continue
+                
+                seen_transactions.add(unique_key)
                 
                 # Calculate estimated rents if requested
                 item_data = {
@@ -119,7 +132,7 @@ class DVFAnalyzer:
     
     def remove_outliers_iqr(self, data: list) -> list:
         """
-        Remove outliers using IQR method (keep only Q1 to Q3)
+        Remove outliers by eliminating top and bottom 15% of price/m² values
         """
         if len(data) < 4:
             return data
@@ -127,14 +140,17 @@ class DVFAnalyzer:
         # Extract prices per m²
         prix_m2_list = [item['prix_m2'] for item in data]
         
-        # Calculate Q1, Q3 and IQR
-        q1 = statistics.quantiles(prix_m2_list, n=4)[0]  # 25th percentile
-        q3 = statistics.quantiles(prix_m2_list, n=4)[2]  # 75th percentile
-        iqr = q3 - q1
+        # Sort prices to get percentiles
+        sorted_prices = sorted(prix_m2_list)
         
-        # Use classic IQR method: Q1 - 1.5*IQR and Q3 + 1.5*IQR
-        lower_bound = max(q1 - 1.5 * iqr, 0)  # No negative prices
-        upper_bound = q3 + 1.5 * iqr
+        # Calculate 15th and 85th percentiles (remove top and bottom 15%)
+        n = len(sorted_prices)
+        lower_index = int(n * 0.15)
+        upper_index = int(n * 0.85)
+        
+        # Get bounds
+        lower_bound = sorted_prices[lower_index] if lower_index < n else sorted_prices[0]
+        upper_bound = sorted_prices[upper_index] if upper_index < n else sorted_prices[-1]
         
         # Filter data
         filtered_data = [
@@ -164,30 +180,29 @@ class DVFAnalyzer:
                 stats['prix_m2_ecart_type'] = round(statistics.stdev(prix_m2_list), 2)
         
         else:  # rental
-            loyer_5pct_list = [item['loyer_mensuel_5pct'] for item in data]
-            loyer_6pct_list = [item['loyer_mensuel_6pct'] for item in data]
-            loyer_m2_5pct_list = [item['loyer_m2_5pct'] for item in data]
-            loyer_m2_6pct_list = [item['loyer_m2_6pct'] for item in data]
+            # Concatenate 5% and 6% data together
+            loyer_combined = []
+            loyer_m2_combined = []
+            
+            for item in data:
+                loyer_combined.extend([item['loyer_mensuel_5pct'], item['loyer_mensuel_6pct']])
+                loyer_m2_combined.extend([item['loyer_m2_5pct'], item['loyer_m2_6pct']])
             
             stats = {
                 'nb_transactions': len(data),
-                'loyer_5pct_moyen': round(statistics.mean(loyer_5pct_list), 2),
-                'loyer_5pct_median': round(statistics.median(loyer_5pct_list), 2),
-                'loyer_5pct_min': min(loyer_5pct_list),
-                'loyer_5pct_max': max(loyer_5pct_list),
-                'loyer_6pct_moyen': round(statistics.mean(loyer_6pct_list), 2),
-                'loyer_6pct_median': round(statistics.median(loyer_6pct_list), 2),
-                'loyer_6pct_min': min(loyer_6pct_list),
-                'loyer_6pct_max': max(loyer_6pct_list),
-                'loyer_m2_5pct_moyen': round(statistics.mean(loyer_m2_5pct_list), 2),
-                'loyer_m2_5pct_median': round(statistics.median(loyer_m2_5pct_list), 2),
-                'loyer_m2_6pct_moyen': round(statistics.mean(loyer_m2_6pct_list), 2),
-                'loyer_m2_6pct_median': round(statistics.median(loyer_m2_6pct_list), 2),
+                'loyer_moyen': round(statistics.mean(loyer_combined), 2),
+                'loyer_median': round(statistics.median(loyer_combined), 2),
+                'loyer_min': min(loyer_combined),
+                'loyer_max': max(loyer_combined),
+                'loyer_m2_moyen': round(statistics.mean(loyer_m2_combined), 2),
+                'loyer_m2_median': round(statistics.median(loyer_m2_combined), 2),
+                'loyer_m2_min': min(loyer_m2_combined),
+                'loyer_m2_max': max(loyer_m2_combined),
             }
             
-            if len(loyer_5pct_list) > 1:
-                stats['loyer_5pct_ecart_type'] = round(statistics.stdev(loyer_5pct_list), 2)
-                stats['loyer_6pct_ecart_type'] = round(statistics.stdev(loyer_6pct_list), 2)
+            if len(loyer_combined) > 1:
+                stats['loyer_ecart_type'] = round(statistics.stdev(loyer_combined), 2)
+                stats['loyer_m2_ecart_type'] = round(statistics.stdev(loyer_m2_combined), 2)
         
         return stats
 
@@ -259,31 +274,8 @@ def analyze_dvf_data(code_postal: str, max_results: int = 100, nb_pieces: Option
         
         # 5. Calculate statistics (on cleaned data)
         stats = analyzer.calculate_statistics(cleaned_data, analysis_type)
-        original_stats = analyzer.calculate_statistics(extracted_data, analysis_type)
         
-        # 6. Get recent examples (top 5, from cleaned data)
-        recent_examples = sorted(cleaned_data, 
-                               key=lambda x: x['date_mutation'], 
-                               reverse=True)[:5]
-        
-        # 7. Analyze by rooms (on cleaned data)
-        rooms_data = {}
-        for item in cleaned_data:
-            nb_p = item.get('nombre_pieces_principales', 'Unknown')
-            if nb_p not in rooms_data:
-                rooms_data[nb_p] = []
-            rooms_data[nb_p].append(item['prix_m2'])
-        
-        rooms_stats = {}
-        for nb_p, prix_list in rooms_data.items():
-            if prix_list:
-                rooms_stats[str(nb_p)] = {
-                    'nb_transactions': len(prix_list),
-                    'prix_m2_moyen': round(statistics.mean(prix_list), 2),
-                    'prix_m2_median': round(statistics.median(prix_list), 2),
-                }
-        
-        # 7. Get date range
+        # 6. Get date range
         if recent_data:
             most_recent = recent_data[0]['date_mutation']
             oldest_selected = recent_data[-1]['date_mutation']
@@ -305,19 +297,7 @@ def analyze_dvf_data(code_postal: str, max_results: int = 100, nb_pieces: Option
                     "oldest_in_selection": oldest_selected
                 }
             },
-            "comparison": {
-                "with_outliers": {
-                    "transactions": original_stats.get('nb_transactions', 0),
-                    "average_price_m2": original_stats.get('prix_m2_moyen', 0)
-                },
-                "without_outliers": {
-                    "transactions": stats.get('nb_transactions', 0),
-                    "average_price_m2": stats.get('prix_m2_moyen', 0)
-                }
-            },
             "statistics": stats,
-            "statistics_by_rooms": rooms_stats,
-            "recent_examples": recent_examples,
             "status": "success"
         }
         
@@ -329,108 +309,94 @@ def analyze_dvf_data(code_postal: str, max_results: int = 100, nb_pieces: Option
             "status": "error"
         }
 
-@mcp.tool()
-def estimate_rental_prices(code_postal: str, max_results: int = 100, nb_pieces: Optional[int] = None) -> Dict[str, Any]:
-    """
-    Estimate rental prices based on DVF sales data using 5% and 6% yield rates.
-    
-    Args:
-        code_postal: French postal code (e.g., "92230", "75001")
-        max_results: Maximum number of recent transactions to analyze (default: 100)
-        nb_pieces: Filter by number of rooms (optional)
-    
-    Returns:
-        Dictionary with rental estimations for both 5% and 6% yields
-    """
-    try:
-        # Use the rental analysis
-        result = analyze_dvf_data(code_postal, max_results=max_results, nb_pieces=nb_pieces, analysis_type="rental")
-        
-        if result["status"] == "error":
-            return result
-        
-        stats = result.get("statistics", {})
-        
-        return {
-            "code_postal": code_postal,
-            "nb_pieces_filter": nb_pieces,
-            "rental_estimates": {
-                "yield_5_percent": {
-                    "average_monthly_rent": stats.get("loyer_5pct_moyen", 0),
-                    "median_monthly_rent": stats.get("loyer_5pct_median", 0),
-                    "average_rent_per_m2": stats.get("loyer_m2_5pct_moyen", 0),
-                    "median_rent_per_m2": stats.get("loyer_m2_5pct_median", 0),
-                    "rent_range": {
-                        "min": stats.get("loyer_5pct_min", 0),
-                        "max": stats.get("loyer_5pct_max", 0)
-                    }
-                },
-                "yield_6_percent": {
-                    "average_monthly_rent": stats.get("loyer_6pct_moyen", 0),
-                    "median_monthly_rent": stats.get("loyer_6pct_median", 0),
-                    "average_rent_per_m2": stats.get("loyer_m2_6pct_moyen", 0),
-                    "median_rent_per_m2": stats.get("loyer_m2_6pct_median", 0),
-                    "rent_range": {
-                        "min": stats.get("loyer_6pct_min", 0),
-                        "max": stats.get("loyer_6pct_max", 0)
-                    }
-                },
-                "transactions_analyzed": stats.get("nb_transactions", 0)
-            },
-            "data_last_updated": result.get("analysis_summary", {}).get("data_last_updated", "Unknown"),
-            "status": "success"
-        }
-        
-    except Exception as e:
-        return {
-            "code_postal": code_postal,
-            "nb_pieces": nb_pieces,
-            "error": f"Rental estimation failed: {str(e)}",
-            "status": "error"
-        }
 
 @mcp.tool()
-def get_dvf_price_summary(code_postal: str, nb_pieces: Optional[int] = None) -> Dict[str, Any]:
+def search_leboncoin_properties(location: str, workplace: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     """
-    Get a quick price summary for DVF data (simplified version).
+    Search Leboncoin for properties in a specific location using Piloterr API with travel time to workplace.
     
     Args:
-        code_postal: French postal code (e.g., "92230", "75001")
-        nb_pieces: Filter by number of rooms (optional)
+        location: The location name to search for properties
+        workplace: Workplace address for travel time calculation (required)
+        api_key: Optional Piloterr API key (uses environment variable if not provided)
     
     Returns:
-        Dictionary with price summary statistics
+        Dictionary with search results and property information including travel times
     """
     try:
-        # Analyze with fewer results for quick summary
-        result = analyze_dvf_data(code_postal, max_results=50, nb_pieces=nb_pieces)
+        # Use provided API key or get from environment
+        key = api_key or os.environ.get('PILOTERR_API_KEY')
+        if not key:
+            return {
+                "location": location,
+                "error": "API key is required. Set PILOTERR_API_KEY environment variable or provide api_key parameter.",
+                "status": "error"
+            }
         
-        if result["status"] == "error":
-            return result
+        # Initialize searcher
+        searcher = PiloterrLeboncoinSearch(key)
         
-        stats = result.get("statistics", {})
+        # Perform search
+        raw_results = searcher.search(location)
+        if not raw_results:
+            return {
+                "location": location,
+                "error": "No results found or API error occurred",
+                "status": "error"
+            }
+        
+        # Format results
+        formatted_results = searcher.format_results(raw_results)
+        
+        # Limit to first 20 properties and add travel times
+        properties = formatted_results.get("properties", [])[:20]
+        
+        # Add travel time calculations for each property
+        for prop in properties:
+            try:
+                lat = prop.get('latitude')
+                lng = prop.get('longitude')
+                
+                if lat != 'N/A' and lng != 'N/A':
+                    # Calculate travel time using coordinates
+                    travel_info = get_distance_time(
+                        origin_latlng=(float(lat), float(lng)),
+                        destination_address=workplace,
+                        mode="transit"
+                    )
+                    
+                    prop['travel_to_work'] = {
+                        "distance_km": round(travel_info['distance_m'] / 1000.0, 1),
+                        "duration_min": travel_info['duration_min'],
+                        "mode": "transit",
+                        "workplace": workplace
+                    }
+                else:
+                    prop['travel_to_work'] = {
+                        "error": "No coordinates available for travel calculation"
+                    }
+            except Exception as e:
+                prop['travel_to_work'] = {
+                    "error": f"Travel calculation failed: {str(e)}"
+                }
+            
+            # Remove latitude and longitude from results
+            prop.pop('latitude', None)
+            prop.pop('longitude', None)
         
         return {
-            "code_postal": code_postal,
-            "nb_pieces_filter": nb_pieces,
-            "price_summary": {
-                "transactions_analyzed": stats.get("nb_transactions", 0),
-                "average_price_per_m2": stats.get("prix_m2_moyen", 0),
-                "median_price_per_m2": stats.get("prix_m2_median", 0),
-                "price_range": {
-                    "min": stats.get("prix_m2_min", 0),
-                    "max": stats.get("prix_m2_max", 0)
-                }
-            },
-            "data_last_updated": result.get("analysis_summary", {}).get("data_last_updated", "Unknown"),
+            "location": location,
+            "workplace": workplace,
+            "search_summary": formatted_results.get("search_summary", {}),
+            "properties": properties,
+            "returned_count": len(properties),
             "status": "success"
         }
         
     except Exception as e:
         return {
-            "code_postal": code_postal,
-            "nb_pieces": nb_pieces,
-            "error": f"Price summary failed: {str(e)}",
+            "location": location,
+            "error": str(e),
             "status": "error"
         }
 
