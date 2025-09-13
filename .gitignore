@@ -155,3 +155,6 @@ config.ini
 logs/
 temp/
 tmp/
+
+# Images
+*.png

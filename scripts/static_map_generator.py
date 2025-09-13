@@ -6,11 +6,13 @@ import dotenv
 from flask import Flask, Response
 import requests
 import os
+import logging
 
 app = Flask(__name__)
 dotenv.load_dotenv()
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+IMGBB = os.getenv("IMGBB_API_KEY")
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 STATIC_MAPS_URL = "https://maps.googleapis.com/maps/api/staticmap"
 
@@ -87,12 +89,39 @@ def fetch_and_save_map(url, output_path="paris_landmarks_map.png"):
         # Save the image as a PNG file
         with open(output_path, 'wb') as f:
             f.write(response.content)
-        print(f"Map saved as {output_path}")
+        logging.info(f"Map saved as {output_path}")
     else:
-        print(f"Failed to fetch map. Status code: {response.status_code}")
+        logging.info(f"Failed to fetch map. Status code: {response.status_code}")
 
 # Call the function to save the map
 
+def upload_to_imgbb(image_path: str) -> str:
+    """
+    Uploads an image to ImgBB and returns the public image URL.
+
+    Args:
+        api_key (str): Your ImgBB API key.
+        image_path (str): Path to the image file.
+
+    Returns:
+        str: Public URL of the uploaded image.
+
+    Raises:
+        RuntimeError: If the upload fails.
+    """
+    with open(image_path, "rb") as f:
+        response = requests.post(
+            "https://api.imgbb.com/1/upload",
+            params={"key": IMGBB},
+            files={"image": f}
+        )
+
+    data = response.json()
+    if response.status_code == 200 and data.get("success"):
+        logging.info(f"Uploaded map to ImgBB: {data['data']['url']}")
+        return data["data"]["url"]
+    else:
+        raise RuntimeError(f"Upload failed: {data}")
 
 
 # --- Example ---
@@ -103,5 +132,5 @@ if __name__ == "__main__":
         (48.886705, 2.343104),  # Sacré-Cœur coords
     ]
     links = aggregated_maps_links(places)
-    print("Interactive map:", links["maps_url"])
-    print("Static image:", links["static_map"])
+    fetch_and_save_map(links["static_map"], "../tmp/static_map.png")
+    print(upload_to_imgbb("../tmp/static_map.png"))

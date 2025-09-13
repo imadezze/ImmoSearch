@@ -21,7 +21,7 @@ from mcp.server.fastmcp import FastMCP
 from scripts.leboncoin_url_generator import get_real_estate_url
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
 from scripts.travel_time import get_distance_time, reverse_geocode
-
+from scripts.static_map_generator import aggregated_maps_links, fetch_and_save_map, upload_to_imgbb
 # Try to import W&B integration, fallback if not available
 try:
     from scripts.wandb_integration import ensure_tracer, trace_mcp_operation
@@ -371,7 +371,7 @@ def search_leboncoin_properties(
         api_key: Optional Piloterr API key (uses environment variable if not provided)
 
     Returns:
-        Dictionary with search results and property information including travel times
+        Dictionary with search results, property information including travel times and an url pointing to a map of the properties
     """
     try:
         # Use provided API key or get from environment
@@ -401,6 +401,7 @@ def search_leboncoin_properties(
         # Limit to first 20 properties and add travel times
         properties = formatted_results.get("properties", [])[:20]
 
+        loc_list = []
         # Add travel time calculations and street address for each property
         for prop in properties:
             try:
@@ -408,6 +409,7 @@ def search_leboncoin_properties(
                 lng = prop.get("longitude")
 
                 if lat != "N/A" and lng != "N/A":
+                    loc_list.append((lat, lng))
                     # Calculate travel time using coordinates
                     travel_info = get_distance_time(
                         origin_latlng=(float(lat), float(lng)),
@@ -475,6 +477,11 @@ def search_leboncoin_properties(
                 prop["key_attributes"].pop("ges", None)
                 prop["key_attributes"].pop("heating_type", None)
 
+        # Compute and locally save map of locations
+        map_link = aggregated_maps_links(loc_list)["static_map"]
+        fetch_and_save_map(map_link, output_path="tmp/map.png")
+        url = upload_to_imgbb("tmp/static_map.png")
+
         result = {
             "location": location,
             "workplace": workplace,
@@ -483,11 +490,13 @@ def search_leboncoin_properties(
             "properties": properties,
             "returned_count": len(properties),
             "status": "success",
+            "url": url,
         }
 
         # Add W&B tracing for property search
         if tracer and tracer.is_enabled():
             result = tracer.trace_property_search(location, workplace, property_type, result)
+
 
         return result
 
