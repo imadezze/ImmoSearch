@@ -15,7 +15,7 @@ server_url = os.getenv("SERVER_URL", "http://127.0.0.1:8000/sse")
 # Point this to YOUR MCP server (pick ONE of the two styles below)
 PROJECT_ROOT = Path(__file__).parent
 # 1) Run a module (preferred if your server is a package: mcp_servers/stdio_server.py + __init__.py present)
-SERVER_ARGS = ["-m", "mcp_servers.arxiv_server"]
+SERVER_ARGS = ["-m", "mcp_servers.leboncoin_server"]
 # 2) Or run a file directly (uncomment and adjust)
 # SERVER_ARGS = [str((PROJECT_ROOT / "mcp_servers" / "stdio_server.py").resolve())]
 # --------------
@@ -36,7 +36,7 @@ async def main() -> None:
     client = Mistral(api_key)
 
     print(f"🔌 Starting console chat with model: {MODEL}")
-    print("💡 Tip: ask things that should use your MCP tools (e.g., 'Use tools to search ArXiv for 2 RAG papers').")
+    print("💡 Tip: ask things that should use your MCP tools (e.g., 'Generate Leboncoin URL for Paris' or 'Search properties in Le Bourget').")
     print("Type /exit to quit.\n")
 
     async with RunContext(model=MODEL) as run:
