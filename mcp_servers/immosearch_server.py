@@ -444,7 +444,7 @@ def search_leboncoin_properties(
             prop.pop("category", None)
             prop.pop("ad_type", None)
             prop.pop("images_count", None)
-            
+
             # Clean up key_attributes - remove OSEF fields
             if "key_attributes" in prop:
                 prop["key_attributes"].pop("ges", None)
@@ -456,66 +456,6 @@ def search_leboncoin_properties(
             "search_summary": formatted_results.get("search_summary", {}),
             "properties": properties,
             "returned_count": len(properties),
-            "status": "success",
-        }
-
-    except Exception as e:
-        return {"location": location, "error": str(e), "status": "error"}
-
-
-@mcp.tool()
-def search_and_save_leboncoin_properties(
-    location: str, workplace: str, api_key: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Search Leboncoin properties and save results to files in results/ folder.
-    Uses the same enhanced processing as search_leboncoin_properties.
-
-    Args:
-        location: The location name to search for properties
-        workplace: Workplace address for travel time calculation (required)
-        api_key: Optional Piloterr API key (uses environment variable if not provided)
-
-    Returns:
-        Dictionary with search summary and file save information
-    """
-    try:
-        # Get the enhanced results using the main search function
-        search_result = search_leboncoin_properties(location, workplace, api_key)
-
-        if search_result.get("status") != "success":
-            return search_result
-
-        # Use provided API key or get from environment for raw data saving
-        key = api_key or os.environ.get("PILOTERR_API_KEY")
-        searcher = PiloterrLeboncoinSearch(key)
-
-        # Get raw results for saving
-        raw_results = searcher.search(location)
-
-        # Save raw results
-        searcher.save_results(
-            raw_results, f"raw_leboncoin_{location.replace(' ', '_')}.json"
-        )
-
-        # Save enhanced results (with streets and travel times)
-        enhanced_results = {
-            "search_summary": search_result.get("search_summary", {}),
-            "properties": search_result.get("properties", []),
-        }
-        searcher.save_results(
-            enhanced_results, f"formatted_leboncoin_{location.replace(' ', '_')}.json"
-        )
-
-        return {
-            "location": location,
-            "workplace": workplace,
-            "search_summary": search_result.get("search_summary", {}),
-            "files_saved": [
-                f"results/raw_leboncoin_{location.replace(' ', '_')}.json",
-                f"results/formatted_leboncoin_{location.replace(' ', '_')}.json",
-            ],
-            "property_count": len(search_result.get("properties", [])),
             "status": "success",
         }
 
