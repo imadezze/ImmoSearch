@@ -10,7 +10,4 @@ def get_weather(location: str) -> dict[str, str]:
     return {"location": location, "temperature": "22°C", "summary": "Sunny"}
 
 if __name__ == "__main__":
-    if "--sse" in sys.argv:
-        mcp.run(transport="sse")
-    else:
-        mcp.run(transport="stdio")
+    mcp.run(transport="streamable-http")
