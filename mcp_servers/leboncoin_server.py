@@ -3,6 +3,7 @@
 
 import os
 import sys
+import re
 from typing import Dict, Any, Optional
 from pathlib import Path
 
@@ -13,7 +14,8 @@ from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 from scripts.leboncoin_url_generator import get_real_estate_url
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
-from scripts.travel_time import get_distance_time
+from scripts.travel_time import get_distance_time, reverse_geocode
+from scripts.ville_ideale_scraper import get_city_reviews_and_info
 
 # Load environment variables
 load_dotenv()
@@ -63,7 +65,7 @@ def search_leboncoin_properties(location: str, workplace: str, api_key: Optional
         # Limit to first 20 properties and add travel times
         properties = formatted_results.get("properties", [])[:20]
         
-        # Add travel time calculations for each property
+        # Add travel time calculations and street address for each property
         for prop in properties:
             try:
                 lat = prop.get('latitude')
@@ -83,14 +85,33 @@ def search_leboncoin_properties(location: str, workplace: str, api_key: Optional
                         "mode": "transit",
                         "workplace": workplace
                     }
+                    
+                    # Get street address using reverse geocoding
+                    try:
+                        full_address = reverse_geocode(float(lat), float(lng))
+                        # Extract just the street part (first part before the first comma)
+                        street_part = full_address.split(',')[0].strip()
+                        
+                        # Clean up the street: remove building numbers and extra details
+                        # Remove patterns like "53", "2a", "34B", etc. at the beginning
+                        cleaned_street = re.sub(r'^\d+[a-zA-Z]?\s*', '', street_part)
+                        # Remove extra details like "2nd floor", "1st floor", etc.
+                        cleaned_street = re.sub(r'\s+\d+(st|nd|rd|th)\s+floor.*$', '', cleaned_street, flags=re.IGNORECASE)
+                        
+                        prop['street'] = cleaned_street.strip()
+                    except Exception as e:
+                        prop['street'] = f"Address lookup failed: {str(e)}"
+                        
                 else:
                     prop['travel_to_work'] = {
                         "error": "No coordinates available for travel calculation"
                     }
+                    prop['street'] = "No coordinates available for address lookup"
             except Exception as e:
                 prop['travel_to_work'] = {
                     "error": f"Travel calculation failed: {str(e)}"
                 }
+                prop['street'] = f"Address processing failed: {str(e)}"
             
             # Remove latitude and longitude from results
             prop.pop('latitude', None)
@@ -113,54 +134,52 @@ def search_leboncoin_properties(location: str, workplace: str, api_key: Optional
         }
 
 @mcp.tool()
-def search_and_save_leboncoin_properties(location: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+def search_and_save_leboncoin_properties(location: str, workplace: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     """
     Search Leboncoin properties and save results to files in results/ folder.
+    Uses the same enhanced processing as search_leboncoin_properties.
     
     Args:
         location: The location name to search for properties
+        workplace: Workplace address for travel time calculation (required)
         api_key: Optional Piloterr API key (uses environment variable if not provided)
     
     Returns:
         Dictionary with search summary and file save information
     """
     try:
-        # Use provided API key or get from environment
-        key = api_key or os.environ.get('PILOTERR_API_KEY')
-        if not key:
-            return {
-                "location": location,
-                "error": "API key is required. Set PILOTERR_API_KEY environment variable or provide api_key parameter.",
-                "status": "error"
-            }
+        # Get the enhanced results using the main search function
+        search_result = search_leboncoin_properties(location, workplace, api_key)
         
-        # Initialize searcher
+        if search_result.get('status') != 'success':
+            return search_result
+        
+        # Use provided API key or get from environment for raw data saving
+        key = api_key or os.environ.get('PILOTERR_API_KEY')
         searcher = PiloterrLeboncoinSearch(key)
         
-        # Perform search
+        # Get raw results for saving
         raw_results = searcher.search(location)
-        if not raw_results:
-            return {
-                "location": location,
-                "error": "No results found or API error occurred",
-                "status": "error"
-            }
         
-        # Format results
-        formatted_results = searcher.format_results(raw_results)
-        
-        # Save results
+        # Save raw results
         searcher.save_results(raw_results, f"raw_leboncoin_{location.replace(' ', '_')}.json")
-        searcher.save_results(formatted_results, f"formatted_leboncoin_{location.replace(' ', '_')}.json")
+        
+        # Save enhanced results (with streets and travel times)
+        enhanced_results = {
+            "search_summary": search_result.get("search_summary", {}),
+            "properties": search_result.get("properties", [])
+        }
+        searcher.save_results(enhanced_results, f"formatted_leboncoin_{location.replace(' ', '_')}.json")
         
         return {
             "location": location,
-            "search_summary": formatted_results.get("search_summary", {}),
+            "workplace": workplace,
+            "search_summary": search_result.get("search_summary", {}),
             "files_saved": [
                 f"results/raw_leboncoin_{location.replace(' ', '_')}.json",
                 f"results/formatted_leboncoin_{location.replace(' ', '_')}.json"
             ],
-            "property_count": len(formatted_results.get("properties", [])),
+            "property_count": len(search_result.get("properties", [])),
             "status": "success"
         }
         

@@ -30,6 +30,34 @@ def _geocode(address: str) -> Tuple[float, float, str]:
     loc = res["geometry"]["location"]
     return float(loc["lat"]), float(loc["lng"]), res["formatted_address"]
 
+def reverse_geocode(lat: float, lng: float) -> str:
+    """
+    Convert latitude and longitude coordinates to a formatted address/street name.
+    
+    Args:
+        lat: Latitude coordinate
+        lng: Longitude coordinate
+        
+    Returns:
+        Formatted address string
+    """
+    if not GOOGLE_API_KEY:
+        raise RuntimeError("GOOGLE_API_KEY is not set")
+    
+    params = {"latlng": f"{lat},{lng}", "key": GOOGLE_API_KEY}
+    with httpx.Client(timeout=15) as client:
+        r = client.get(GEOCODE_URL, params=params)
+        r.raise_for_status()
+        data = r.json()
+    
+    status = data.get("status")
+    if status != "OK" or not data.get("results"):
+        em = data.get("error_message", "")
+        raise ValueError(f"Reverse geocoding failed for '{lat},{lng}': {status}{' — ' + em if em else ''}")
+    
+    # Return the most specific address (first result)
+    return data["results"][0]["formatted_address"]
+
 def _map_mode(mode: Mode) -> str:
     return {
         "driving": "DRIVE",
@@ -131,8 +159,13 @@ def get_distance_time(
 
 # Example
 if __name__ == "__main__":
+    print("Testing travel time calculation:")
     print(get_distance_time(
         origin_address="Gare du Nord, Paris",
         destination_address="Tour Eiffel, Paris",
         mode="transit",
     ))
+    
+    print("\nTesting reverse geocoding:")
+    # Test reverse geocoding with Le Bourget coordinates
+    print(reverse_geocode(48.9341, 2.4358))
