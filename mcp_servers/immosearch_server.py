@@ -1,22 +1,25 @@
 #!/usr/bin/env python
 """MCP server exposing DVF (Demandes de Valeurs Foncières) analysis tools."""
 
+import logging
 import os
 import sys
-from typing import Dict, Any, Optional
 from pathlib import Path
-import logging
+from typing import Any, Dict, Optional
+
 # Add parent directory to path to import our modules
 sys.path.append(str(Path(__file__).parent.parent))
 
-from mcp.server.fastmcp import FastMCP
-from dotenv import load_dotenv
-import requests
 import json
 import statistics
 from datetime import datetime
+
+import requests
+from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
 from scripts.leboncoin_url_generator import get_real_estate_url
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
+from scripts.travel_time import get_distance_time
 
 # Load environment variables
 load_dotenv()
@@ -24,93 +27,101 @@ load_dotenv()
 # Create MCP server
 mcp = FastMCP("immosearch-server")
 
+
 class DVFAnalyzer:
     """DVF (Demandes de Valeurs Foncières) analyzer for French real estate data."""
-    
+
     def __init__(self, base_url: str = "https://api.cquest.org/dvf"):
         self.base_url = base_url
-    
-    def fetch_data(self, code_postal: str, type_local: str = "Appartement") -> Optional[Dict]:
+
+    def fetch_data(
+        self, code_postal: str, type_local: str = "Appartement"
+    ) -> Optional[Dict]:
         """Fetch DVF data from API."""
         url = f"{self.base_url}?code_postal={code_postal}&type_local={type_local}"
-        
+
         try:
             response = requests.get(url, timeout=30)
             response.raise_for_status()
             data = response.json()
             # Check if the response is valid
-            if not data or 'resultats' not in data:
+            if not data or "resultats" not in data:
                 return None
             return data
         except requests.RequestException as e:
             return None
-    
-    def filter_recent_transactions(self, data: list, max_results: int = 100, nb_pieces: Optional[int] = None) -> list:
+
+    def filter_recent_transactions(
+        self, data: list, max_results: int = 100, nb_pieces: Optional[int] = None
+    ) -> list:
         """Filter for most recent transactions."""
         if not data:
             return []
-            
+
         # Filter by room count if specified
         filtered_data = data
         if nb_pieces is not None:
             filtered_data = [
-                t for t in data 
-                if t.get('nombre_pieces_principales') == nb_pieces
+                t for t in data if t.get("nombre_pieces_principales") == nb_pieces
             ]
-        
+
         # Sort by date descending
         sorted_transactions = sorted(
-            [t for t in filtered_data if t.get('date_mutation')],
-            key=lambda x: x['date_mutation'],
-            reverse=True
+            [t for t in filtered_data if t.get("date_mutation")],
+            key=lambda x: x["date_mutation"],
+            reverse=True,
         )
-        
+
         return sorted_transactions[:max_results]
-    
-    def extract_relevant_data(self, transactions: list, analysis_type: str = "sale") -> list:
+
+    def extract_relevant_data(
+        self, transactions: list, analysis_type: str = "sale"
+    ) -> list:
         """Extract relevant data from transactions and remove duplicates."""
         extracted_data = []
         seen_transactions = set()
-        
+
         for transaction in transactions:
-            valeur_fonciere = transaction.get('valeur_fonciere')
-            surface_relle_bati = transaction.get('surface_relle_bati')
-            nombre_pieces_principales = transaction.get('nombre_pieces_principales')
-            date_mutation = transaction.get('date_mutation')
-            voie = transaction.get('voie', '')
-            commune = transaction.get('commune', '')
-            nature_mutation = transaction.get('nature_mutation', '')
-            
+            valeur_fonciere = transaction.get("valeur_fonciere")
+            surface_relle_bati = transaction.get("surface_relle_bati")
+            nombre_pieces_principales = transaction.get("nombre_pieces_principales")
+            date_mutation = transaction.get("date_mutation")
+            voie = transaction.get("voie", "")
+            commune = transaction.get("commune", "")
+            nature_mutation = transaction.get("nature_mutation", "")
+
             # Keep only transactions with essential data
-            if (valeur_fonciere is not None and 
-                surface_relle_bati is not None and 
-                surface_relle_bati > 0 and
-                valeur_fonciere > 0):
-                
+            if (
+                valeur_fonciere is not None
+                and surface_relle_bati is not None
+                and surface_relle_bati > 0
+                and valeur_fonciere > 0
+            ):
+
                 prix_m2 = valeur_fonciere / surface_relle_bati
-                
+
                 # Create a unique key to identify duplicates
                 # Using date, value, surface, and street to identify same transaction
                 unique_key = (date_mutation, valeur_fonciere, surface_relle_bati, voie)
-                
+
                 # Skip if we've already seen this exact transaction
                 if unique_key in seen_transactions:
                     continue
-                
+
                 seen_transactions.add(unique_key)
-                
+
                 # Calculate estimated rents if requested
                 item_data = {
-                    'valeur_fonciere': valeur_fonciere,
-                    'surface_relle_bati': surface_relle_bati,
-                    'nombre_pieces_principales': nombre_pieces_principales,
-                    'prix_m2': round(prix_m2, 2),
-                    'date_mutation': date_mutation,
-                    'voie': voie,
-                    'commune': commune,
-                    'nature_mutation': nature_mutation
+                    "valeur_fonciere": valeur_fonciere,
+                    "surface_relle_bati": surface_relle_bati,
+                    "nombre_pieces_principales": nombre_pieces_principales,
+                    "prix_m2": round(prix_m2, 2),
+                    "date_mutation": date_mutation,
+                    "voie": voie,
+                    "commune": commune,
+                    "nature_mutation": nature_mutation,
                 }
-                
+
                 # Add rental data if requested
                 if analysis_type == "rental":
                     # Formula: Monthly rent = (Property value × Yield) / (12 × 100)
@@ -118,170 +129,187 @@ class DVFAnalyzer:
                     loyer_6pct = round((valeur_fonciere * 6) / (12 * 100), 2)
                     loyer_m2_5pct = round(loyer_5pct / surface_relle_bati, 2)
                     loyer_m2_6pct = round(loyer_6pct / surface_relle_bati, 2)
-                    
-                    item_data.update({
-                        'loyer_mensuel_5pct': loyer_5pct,
-                        'loyer_mensuel_6pct': loyer_6pct,
-                        'loyer_m2_5pct': loyer_m2_5pct,
-                        'loyer_m2_6pct': loyer_m2_6pct
-                    })
-                
+
+                    item_data.update(
+                        {
+                            "loyer_mensuel_5pct": loyer_5pct,
+                            "loyer_mensuel_6pct": loyer_6pct,
+                            "loyer_m2_5pct": loyer_m2_5pct,
+                            "loyer_m2_6pct": loyer_m2_6pct,
+                        }
+                    )
+
                 extracted_data.append(item_data)
-        
+
         return extracted_data
-    
+
     def remove_outliers_iqr(self, data: list) -> list:
         """
         Remove outliers by eliminating top and bottom 15% of price/m² values
         """
         if len(data) < 4:
             return data
-        
+
         # Extract prices per m²
-        prix_m2_list = [item['prix_m2'] for item in data]
-        
+        prix_m2_list = [item["prix_m2"] for item in data]
+
         # Sort prices to get percentiles
         sorted_prices = sorted(prix_m2_list)
-        
+
         # Calculate 15th and 85th percentiles (remove top and bottom 15%)
         n = len(sorted_prices)
         lower_index = int(n * 0.15)
         upper_index = int(n * 0.85)
-        
+
         # Get bounds
-        lower_bound = sorted_prices[lower_index] if lower_index < n else sorted_prices[0]
-        upper_bound = sorted_prices[upper_index] if upper_index < n else sorted_prices[-1]
-        
+        lower_bound = (
+            sorted_prices[lower_index] if lower_index < n else sorted_prices[0]
+        )
+        upper_bound = (
+            sorted_prices[upper_index] if upper_index < n else sorted_prices[-1]
+        )
+
         # Filter data
         filtered_data = [
-            item for item in data
-            if lower_bound <= item['prix_m2'] <= upper_bound
+            item for item in data if lower_bound <= item["prix_m2"] <= upper_bound
         ]
-        
+
         return filtered_data
-    
+
     def calculate_statistics(self, data: list, analysis_type: str = "sale") -> Dict:
         """Calculate statistics on price per m² or rental estimates."""
         if not data:
             return {}
-        
+
         if analysis_type == "sale":
-            prix_m2_list = [item['prix_m2'] for item in data]
-            
+            prix_m2_list = [item["prix_m2"] for item in data]
+
             stats = {
-                'nb_transactions': len(data),
-                'prix_m2_moyen': round(statistics.mean(prix_m2_list), 2),
-                'prix_m2_median': round(statistics.median(prix_m2_list), 2),
-                'prix_m2_min': min(prix_m2_list),
-                'prix_m2_max': max(prix_m2_list),
+                "nb_transactions": len(data),
+                "prix_m2_moyen": round(statistics.mean(prix_m2_list), 2),
+                "prix_m2_median": round(statistics.median(prix_m2_list), 2),
+                "prix_m2_min": min(prix_m2_list),
+                "prix_m2_max": max(prix_m2_list),
             }
-            
+
             if len(prix_m2_list) > 1:
-                stats['prix_m2_ecart_type'] = round(statistics.stdev(prix_m2_list), 2)
-        
+                stats["prix_m2_ecart_type"] = round(statistics.stdev(prix_m2_list), 2)
+
         else:  # rental
             # Concatenate 5% and 6% data together
             loyer_combined = []
             loyer_m2_combined = []
-            
+
             for item in data:
-                loyer_combined.extend([item['loyer_mensuel_5pct'], item['loyer_mensuel_6pct']])
-                loyer_m2_combined.extend([item['loyer_m2_5pct'], item['loyer_m2_6pct']])
-            
+                loyer_combined.extend(
+                    [item["loyer_mensuel_5pct"], item["loyer_mensuel_6pct"]]
+                )
+                loyer_m2_combined.extend([item["loyer_m2_5pct"], item["loyer_m2_6pct"]])
+
             stats = {
-                'nb_transactions': len(data),
-                'loyer_moyen': round(statistics.mean(loyer_combined), 2),
-                'loyer_median': round(statistics.median(loyer_combined), 2),
-                'loyer_min': min(loyer_combined),
-                'loyer_max': max(loyer_combined),
-                'loyer_m2_moyen': round(statistics.mean(loyer_m2_combined), 2),
-                'loyer_m2_median': round(statistics.median(loyer_m2_combined), 2),
-                'loyer_m2_min': min(loyer_m2_combined),
-                'loyer_m2_max': max(loyer_m2_combined),
+                "nb_transactions": len(data),
+                "loyer_moyen": round(statistics.mean(loyer_combined), 2),
+                "loyer_median": round(statistics.median(loyer_combined), 2),
+                "loyer_min": min(loyer_combined),
+                "loyer_max": max(loyer_combined),
+                "loyer_m2_moyen": round(statistics.mean(loyer_m2_combined), 2),
+                "loyer_m2_median": round(statistics.median(loyer_m2_combined), 2),
+                "loyer_m2_min": min(loyer_m2_combined),
+                "loyer_m2_max": max(loyer_m2_combined),
             }
-            
+
             if len(loyer_combined) > 1:
-                stats['loyer_ecart_type'] = round(statistics.stdev(loyer_combined), 2)
-                stats['loyer_m2_ecart_type'] = round(statistics.stdev(loyer_m2_combined), 2)
-        
+                stats["loyer_ecart_type"] = round(statistics.stdev(loyer_combined), 2)
+                stats["loyer_m2_ecart_type"] = round(
+                    statistics.stdev(loyer_m2_combined), 2
+                )
+
         return stats
 
+
 @mcp.tool()
-def analyze_dvf_data(code_postal: str, max_results: int = 100, nb_pieces: Optional[int] = None, analysis_type: str = "sale") -> Dict[str, Any]:
+def analyze_dvf_data(
+    code_postal: str,
+    max_results: int = 100,
+    nb_pieces: Optional[int] = None,
+    analysis_type: str = "sale",
+) -> Dict[str, Any]:
     """
     Analyze DVF (French real estate transaction) data for a given postal code.
-    
+
     Args:
         code_postal: French postal code (e.g., "92230", "75001")
         max_results: Maximum number of recent transactions to analyze (default: 100)
         nb_pieces: Filter by number of rooms (optional, e.g., 1, 2, 3, 4, 5)
         analysis_type: "sale" for sales analysis, "rental" for rental estimation (default: "sale")
-    
+
     Returns:
         Dictionary with analysis results including statistics and recent transactions
     """
-    logging.info(f"Analyzing DVF data for code postal: {code_postal}, max results: {max_results}, nb pieces: {nb_pieces}, analysis type: {analysis_type}")
+    logging.info(
+        f"Analyzing DVF data for code postal: {code_postal}, max results: {max_results}, nb pieces: {nb_pieces}, analysis type: {analysis_type}"
+    )
     try:
         analyzer = DVFAnalyzer()
-        
+
         # 1. Fetch data
         raw_data = analyzer.fetch_data(code_postal)
-        
-        if not raw_data or 'resultats' not in raw_data:
+
+        if not raw_data or "resultats" not in raw_data:
             return {
                 "code_postal": code_postal,
                 "error": "No data available for this postal code",
-                "status": "error"
+                "status": "error",
             }
-        
-        total_results = raw_data.get('nb_resultats', 0)
-        derniere_maj = raw_data.get('derniere_maj', 'Unknown')
-        
+
+        total_results = raw_data.get("nb_resultats", 0)
+        derniere_maj = raw_data.get("derniere_maj", "Unknown")
+
         # 2. Filter recent transactions
         recent_data = analyzer.filter_recent_transactions(
-            raw_data['resultats'], max_results, nb_pieces
+            raw_data["resultats"], max_results, nb_pieces
         )
-        
+
         if not recent_data:
             return {
                 "code_postal": code_postal,
                 "nb_pieces": nb_pieces,
                 "error": "No recent transactions found with specified criteria",
-                "status": "error"
+                "status": "error",
             }
-        
+
         # 3. Extract relevant data
         extracted_data = analyzer.extract_relevant_data(recent_data, analysis_type)
-        
+
         if not extracted_data:
             return {
                 "code_postal": code_postal,
                 "nb_pieces": nb_pieces,
                 "error": "No transactions with complete data found",
-                "status": "error"
+                "status": "error",
             }
-        
+
         # 4. Remove outliers
         cleaned_data = analyzer.remove_outliers_iqr(extracted_data)
-        
+
         if not cleaned_data:
             return {
                 "code_postal": code_postal,
                 "nb_pieces": nb_pieces,
                 "error": "No transactions after outlier removal",
-                "status": "error"
+                "status": "error",
             }
-        
+
         # 5. Calculate statistics (on cleaned data)
         stats = analyzer.calculate_statistics(cleaned_data, analysis_type)
-        
+
         # 6. Get date range
         if recent_data:
-            most_recent = recent_data[0]['date_mutation']
-            oldest_selected = recent_data[-1]['date_mutation']
+            most_recent = recent_data[0]["date_mutation"]
+            oldest_selected = recent_data[-1]["date_mutation"]
         else:
             most_recent = oldest_selected = None
-        
+
         return {
             "code_postal": code_postal,
             "nb_pieces_filter": nb_pieces,
@@ -294,111 +322,110 @@ def analyze_dvf_data(code_postal: str, max_results: int = 100, nb_pieces: Option
                 "outliers_removed": len(extracted_data) - len(cleaned_data),
                 "date_range": {
                     "most_recent": most_recent,
-                    "oldest_in_selection": oldest_selected
-                }
+                    "oldest_in_selection": oldest_selected,
+                },
             },
             "statistics": stats,
-            "status": "success"
+            "status": "success",
         }
-        
+
     except Exception as e:
         return {
             "code_postal": code_postal,
             "nb_pieces": nb_pieces,
             "error": f"Analysis failed: {str(e)}",
-            "status": "error"
+            "status": "error",
         }
 
 
 @mcp.tool()
-def search_leboncoin_properties(location: str, workplace: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+def search_leboncoin_properties(
+    location: str, workplace: str, api_key: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Search Leboncoin for properties in a specific location using Piloterr API with travel time to workplace.
-    
+
     Args:
         location: The location name to search for properties
         workplace: Workplace address for travel time calculation (required)
         api_key: Optional Piloterr API key (uses environment variable if not provided)
-    
+
     Returns:
         Dictionary with search results and property information including travel times
     """
     try:
         # Use provided API key or get from environment
-        key = api_key or os.environ.get('PILOTERR_API_KEY')
+        key = api_key or os.environ.get("PILOTERR_API_KEY")
         if not key:
             return {
                 "location": location,
                 "error": "API key is required. Set PILOTERR_API_KEY environment variable or provide api_key parameter.",
-                "status": "error"
+                "status": "error",
             }
-        
+
         # Initialize searcher
         searcher = PiloterrLeboncoinSearch(key)
-        
+
         # Perform search
         raw_results = searcher.search(location)
         if not raw_results:
             return {
                 "location": location,
                 "error": "No results found or API error occurred",
-                "status": "error"
+                "status": "error",
             }
-        
+
         # Format results
         formatted_results = searcher.format_results(raw_results)
-        
+
         # Limit to first 20 properties and add travel times
         properties = formatted_results.get("properties", [])[:20]
-        
+
         # Add travel time calculations for each property
         for prop in properties:
             try:
-                lat = prop.get('latitude')
-                lng = prop.get('longitude')
-                
-                if lat != 'N/A' and lng != 'N/A':
+                lat = prop.get("latitude")
+                lng = prop.get("longitude")
+
+                if lat != "N/A" and lng != "N/A":
                     # Calculate travel time using coordinates
                     travel_info = get_distance_time(
                         origin_latlng=(float(lat), float(lng)),
                         destination_address=workplace,
-                        mode="transit"
+                        mode="transit",
                     )
-                    
-                    prop['travel_to_work'] = {
-                        "distance_km": round(travel_info['distance_m'] / 1000.0, 1),
-                        "duration_min": travel_info['duration_min'],
+
+                    prop["travel_to_work"] = {
+                        "distance_km": round(travel_info["distance_m"] / 1000.0, 1),
+                        "duration_min": travel_info["duration_min"],
                         "mode": "transit",
-                        "workplace": workplace
+                        "workplace": workplace,
                     }
                 else:
-                    prop['travel_to_work'] = {
+                    prop["travel_to_work"] = {
                         "error": "No coordinates available for travel calculation"
                     }
             except Exception as e:
-                prop['travel_to_work'] = {
+                prop["travel_to_work"] = {
                     "error": f"Travel calculation failed: {str(e)}"
                 }
-            
+
             # Remove latitude and longitude from results
-            prop.pop('latitude', None)
-            prop.pop('longitude', None)
-        
+            prop.pop("latitude", None)
+            prop.pop("longitude", None)
+
         return {
             "location": location,
             "workplace": workplace,
             "search_summary": formatted_results.get("search_summary", {}),
             "properties": properties,
             "returned_count": len(properties),
-            "status": "success"
+            "status": "success",
         }
-        
+
     except Exception as e:
-        return {
-            "location": location,
-            "error": str(e),
-            "status": "error"
-        }
+        return {"location": location, "error": str(e), "status": "error"}
+
 
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
