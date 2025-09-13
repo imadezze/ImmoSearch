@@ -21,7 +21,7 @@ from mcp.server.fastmcp import FastMCP
 from scripts.leboncoin_url_generator import get_real_estate_url
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
 from scripts.travel_time import get_distance_time, reverse_geocode
-from scripts.static_map_generator import aggregated_maps_links, fetch_and_save_map, upload_to_imgbb
+from scripts.static_map_generator import aggregated_maps_links, fetch_and_save_map, upload_to_imgbb, floats_to_blue_red_hex, parse_price_to_float
 # Try to import W&B integration, fallback if not available
 try:
     from scripts.wandb_integration import ensure_tracer, trace_mcp_operation
@@ -401,7 +401,7 @@ def search_leboncoin_properties(
         # Limit to first 20 properties and add travel times
         properties = formatted_results.get("properties", [])[:20]
 
-        loc_list = []
+        loc_list, prices_list = [], []
         # Add travel time calculations and street address for each property
         for prop in properties:
             try:
@@ -409,7 +409,10 @@ def search_leboncoin_properties(
                 lng = prop.get("longitude")
 
                 if lat != "N/A" and lng != "N/A":
+                    # Helpers to compute the map later
                     loc_list.append((lat, lng))
+                    prices_list.append(parse_price_to_float(prop.get("price")))
+
                     # Calculate travel time using coordinates
                     travel_info = get_distance_time(
                         origin_latlng=(float(lat), float(lng)),
@@ -478,7 +481,8 @@ def search_leboncoin_properties(
                 prop["key_attributes"].pop("heating_type", None)
 
         # Compute and locally save map of locations
-        map_link = aggregated_maps_links(loc_list)["static_map"]
+        colors = floats_to_blue_red_hex(prices_list)
+        map_link = aggregated_maps_links(loc_list, colors=colors)["static_map"]
         fetch_and_save_map(map_link, output_path="tmp/map.png")
         url = upload_to_imgbb("tmp/map.png")
 
