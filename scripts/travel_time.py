@@ -1,6 +1,7 @@
 import os
 import json
 import datetime as dt
+from datetime import timezone
 from typing import Literal, Dict, Any, Tuple, Optional
 from dotenv import load_dotenv
 load_dotenv()
@@ -75,9 +76,9 @@ def get_distance_time(
 
     # timezone-aware UTC (required for transit; good for traffic-aware driving)
     if departure_time is None:
-        departure_time = dt.datetime.now(dt.UTC)
+        departure_time = dt.datetime.now(timezone.utc)
     elif departure_time.tzinfo is None:
-        departure_time = departure_time.replace(tzinfo=dt.UTC)
+        departure_time = departure_time.replace(tzinfo=timezone.utc)
 
     payload: Dict[str, Any] = {
         "origin":   {"location": {"latLng": {"latitude": o_lat, "longitude": o_lng}}},
