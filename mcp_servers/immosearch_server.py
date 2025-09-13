@@ -140,15 +140,19 @@ class DVFAnalyzer:
                     # Formula: Monthly rent = (Property value × Yield) / (12 × 100)
                     loyer_5pct = round((valeur_fonciere * 5) / (12 * 100), 2)
                     loyer_6pct = round((valeur_fonciere * 6) / (12 * 100), 2)
+                    loyer_7pct = round((valeur_fonciere * 7) / (12 * 100), 2)
                     loyer_m2_5pct = round(loyer_5pct / surface_relle_bati, 2)
                     loyer_m2_6pct = round(loyer_6pct / surface_relle_bati, 2)
+                    loyer_m2_7pct = round(loyer_7pct / surface_relle_bati, 2)
 
                     item_data.update(
                         {
                             "loyer_mensuel_5pct": loyer_5pct,
                             "loyer_mensuel_6pct": loyer_6pct,
+                            "loyer_mensuel_7pct": loyer_7pct,
                             "loyer_m2_5pct": loyer_m2_5pct,
                             "loyer_m2_6pct": loyer_m2_6pct,
+                            "loyer_m2_7pct": loyer_m2_7pct,
                         }
                     )
 
@@ -209,15 +213,15 @@ class DVFAnalyzer:
                 stats["prix_m2_ecart_type"] = round(statistics.stdev(prix_m2_list), 2)
 
         else:  # rental
-            # Concatenate 5% and 6% data together
+            # Concatenate 5%, 6%, and 7% data together
             loyer_combined = []
             loyer_m2_combined = []
 
             for item in data:
                 loyer_combined.extend(
-                    [item["loyer_mensuel_5pct"], item["loyer_mensuel_6pct"]]
+                    [item["loyer_mensuel_5pct"], item["loyer_mensuel_6pct"], item["loyer_mensuel_7pct"]]
                 )
-                loyer_m2_combined.extend([item["loyer_m2_5pct"], item["loyer_m2_6pct"]])
+                loyer_m2_combined.extend([item["loyer_m2_5pct"], item["loyer_m2_6pct"], item["loyer_m2_7pct"]])
 
             stats = {
                 "nb_transactions": len(data),
