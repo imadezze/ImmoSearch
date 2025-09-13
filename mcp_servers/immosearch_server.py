@@ -341,7 +341,7 @@ def analyze_dvf_data(
 
 @mcp.tool()
 def search_leboncoin_properties(
-    location: str, workplace: str, api_key: Optional[str] = None
+    location: str, workplace: str, property_type: str = "rental", api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Search Leboncoin for properties in a specific location using Piloterr API with travel time to workplace.
@@ -349,6 +349,7 @@ def search_leboncoin_properties(
     Args:
         location: The location name to search for properties
         workplace: Workplace address for travel time calculation (required)
+        property_type: "rental" for rentals, "sale" for sales (default: "rental")
         api_key: Optional Piloterr API key (uses environment variable if not provided)
 
     Returns:
@@ -367,8 +368,8 @@ def search_leboncoin_properties(
         # Initialize searcher
         searcher = PiloterrLeboncoinSearch(key)
 
-        # Perform search
-        raw_results = searcher.search(location)
+        # Perform search with property type parameter
+        raw_results = searcher.search(location, property_type=property_type)
         if not raw_results:
             return {
                 "location": location,
@@ -453,6 +454,7 @@ def search_leboncoin_properties(
         return {
             "location": location,
             "workplace": workplace,
+            "property_type": property_type,
             "search_summary": formatted_results.get("search_summary", {}),
             "properties": properties,
             "returned_count": len(properties),

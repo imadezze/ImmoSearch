@@ -24,7 +24,7 @@ mcp = FastMCP("leboncoin-server")
 
 @mcp.tool()
 def search_leboncoin_properties(
-    location: str, workplace: str, api_key: Optional[str] = None
+    location: str, workplace: str, property_type: str = "rental", api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Search Leboncoin for properties in a specific location using Piloterr API with travel time to workplace.
@@ -32,6 +32,7 @@ def search_leboncoin_properties(
     Args:
         location: The location name to search for properties
         workplace: Workplace address for travel time calculation (required)
+        property_type: "rental" for rentals, "sale" for sales (default: "rental")
         api_key: Optional Piloterr API key (uses environment variable if not provided)
 
     Returns:
@@ -50,8 +51,8 @@ def search_leboncoin_properties(
         # Initialize searcher
         searcher = PiloterrLeboncoinSearch(key)
 
-        # Perform search
-        raw_results = searcher.search(location)
+        # Perform search with property type parameter
+        raw_results = searcher.search(location, property_type=property_type)
         if not raw_results:
             return {
                 "location": location,
@@ -125,6 +126,7 @@ def search_leboncoin_properties(
         return {
             "location": location,
             "workplace": workplace,
+            "property_type": property_type,
             "search_summary": formatted_results.get("search_summary", {}),
             "properties": properties,
             "returned_count": len(properties),
@@ -137,7 +139,7 @@ def search_leboncoin_properties(
 
 @mcp.tool()
 def search_and_save_leboncoin_properties(
-    location: str, workplace: str, api_key: Optional[str] = None
+    location: str, workplace: str, property_type: str = "rental", api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Search Leboncoin properties and save results to files in results/ folder.
@@ -146,6 +148,7 @@ def search_and_save_leboncoin_properties(
     Args:
         location: The location name to search for properties
         workplace: Workplace address for travel time calculation (required)
+        property_type: "rental" for rentals, "sale" for sales (default: "rental")
         api_key: Optional Piloterr API key (uses environment variable if not provided)
 
     Returns:
@@ -153,7 +156,7 @@ def search_and_save_leboncoin_properties(
     """
     try:
         # Get the enhanced results using the main search function
-        search_result = search_leboncoin_properties(location, workplace, api_key)
+        search_result = search_leboncoin_properties(location, workplace, property_type, api_key)
 
         if search_result.get("status") != "success":
             return search_result
@@ -182,6 +185,7 @@ def search_and_save_leboncoin_properties(
         return {
             "location": location,
             "workplace": workplace,
+            "property_type": property_type,
             "search_summary": search_result.get("search_summary", {}),
             "files_saved": [
                 f"results/raw_leboncoin_{location.replace(' ', '_')}.json",

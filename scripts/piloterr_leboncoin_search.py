@@ -16,18 +16,19 @@ class PiloterrLeboncoinSearch:
         if not self.api_key:
             raise ValueError("API key is required. Set PILOTERR_API_KEY environment variable or pass api_key parameter.")
     
-    def search(self, location, return_page_source=False):
+    def search(self, location, return_page_source=False, property_type="rental"):
         """
         Search Leboncoin for real estate in a specific location using Piloterr API.
-        
+
         Args:
             location (str): Location name (e.g., "le bourget", "paris")
             return_page_source (bool): Whether to return HTML source
-            
+            property_type (str): "rental" for rentals, "sale" for sales
+
         Returns:
             dict: API response with search results
         """
-        leboncoin_url = get_real_estate_url(location)
+        leboncoin_url = get_real_estate_url(location, property_type)
         
         headers = {
             'x-api-key': self.api_key
