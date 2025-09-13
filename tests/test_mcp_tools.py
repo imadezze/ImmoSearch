@@ -5,8 +5,8 @@ import sys
 import asyncio
 from pathlib import Path
 
-# Add current directory to path
-sys.path.append(str(Path(__file__).parent))
+# Add parent directory to path to access mcp_servers
+sys.path.append(str(Path(__file__).parent.parent))
 
 from mcp_servers.leboncoin_server import search_leboncoin_properties, search_and_save_leboncoin_properties
 

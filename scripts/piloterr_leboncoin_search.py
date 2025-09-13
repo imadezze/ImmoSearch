@@ -82,6 +82,8 @@ class PiloterrLeboncoinSearch:
                 "district": location_data.get('district', 'N/A'),
                 "department_name": location_data.get('department_name', 'N/A'),
                 "region_name": location_data.get('region_name', 'N/A'),
+                "latitude": location_data.get('lat', 'N/A'),
+                "longitude": location_data.get('lng', 'N/A'),
                 "category": ad.get('category_name', 'N/A'),
                 "ad_type": ad.get('ad_type', 'N/A'),
                 "url": ad.get('url', 'N/A'),
