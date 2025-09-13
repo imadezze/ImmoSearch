@@ -436,8 +436,8 @@ def search_leboncoin_properties(
                 prop["street"] = f"Address processing failed: {str(e)}"
 
             # Remove unwanted fields (OSEF parameters)
-            prop.pop("latitude", None)
-            prop.pop("longitude", None)
+            # prop.pop("latitude", None)
+            # prop.pop("longitude", None)
             prop.pop("zipcode", None)
             prop.pop("department_name", None)
             prop.pop("region_name", None)
