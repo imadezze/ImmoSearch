@@ -4,6 +4,7 @@
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -15,6 +16,18 @@ from mcp.server.fastmcp import FastMCP
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
 from scripts.travel_time import get_distance_time, reverse_geocode
 
+# Try to import W&B integration, fallback if not available
+try:
+    from scripts.wandb_integration import ensure_tracer, trace_mcp_operation
+    tracer = ensure_tracer()
+except ImportError:
+    # W&B not available, create no-op tracer and decorator
+    tracer = None
+    def trace_mcp_operation(operation_name: str):
+        def decorator(func):
+            return func
+        return decorator
+
 # Load environment variables
 load_dotenv()
 
@@ -22,6 +35,7 @@ load_dotenv()
 mcp = FastMCP("leboncoin-server")
 
 
+@trace_mcp_operation("property_search")
 @mcp.tool()
 def search_leboncoin_properties(
     location: str, workplace: str, property_type: str = "rental", api_key: Optional[str] = None
@@ -80,6 +94,12 @@ def search_leboncoin_properties(
                         mode="transit",
                     )
 
+                    # Add W&B tracing for travel calculation
+                    if tracer and tracer.is_enabled():
+                        travel_info = tracer.trace_travel_calculation(
+                            (float(lat), float(lng)), workplace, "transit", travel_info
+                        )
+
                     prop["travel_to_work"] = {
                         "distance_km": round(travel_info["distance_m"] / 1000.0, 1),
                         "duration_min": travel_info["duration_min"],
@@ -123,7 +143,7 @@ def search_leboncoin_properties(
             prop.pop("latitude", None)
             prop.pop("longitude", None)
 
-        return {
+        result = {
             "location": location,
             "workplace": workplace,
             "property_type": property_type,
@@ -133,10 +153,17 @@ def search_leboncoin_properties(
             "status": "success",
         }
 
+        # Add W&B tracing for property search
+        if tracer and tracer.is_enabled():
+            result = tracer.trace_property_search(location, workplace, property_type, result)
+
+        return result
+
     except Exception as e:
         return {"location": location, "error": str(e), "status": "error"}
 
 
+@trace_mcp_operation("property_search_and_save")
 @mcp.tool()
 def search_and_save_leboncoin_properties(
     location: str, workplace: str, property_type: str = "rental", api_key: Optional[str] = None
@@ -165,31 +192,49 @@ def search_and_save_leboncoin_properties(
         key = api_key or os.environ.get("PILOTERR_API_KEY")
         searcher = PiloterrLeboncoinSearch(key)
 
+        # Create timestamp for filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Create filename based on property type
+        location_clean = location.replace(' ', '_')
+        if property_type.lower() in ["sale", "sales", "sell", "vente", "ventes"]:
+            type_suffix = "sales"
+        else:
+            type_suffix = "rentals"
+
         # Get raw results for saving
-        raw_results = searcher.search(location)
+        raw_results = searcher.search(location, property_type=property_type)
+
+        # Generate filenames with timestamp and property type
+        raw_filename = f"raw_leboncoin_{type_suffix}_{location_clean}_{timestamp}.json"
+        formatted_filename = f"formatted_leboncoin_{type_suffix}_{location_clean}_{timestamp}.json"
 
         # Save raw results
-        searcher.save_results(
-            raw_results, f"raw_leboncoin_{location.replace(' ', '_')}.json"
-        )
+        searcher.save_results(raw_results, raw_filename)
 
         # Save enhanced results (with streets and travel times)
         enhanced_results = {
             "search_summary": search_result.get("search_summary", {}),
             "properties": search_result.get("properties", []),
+            "search_metadata": {
+                "location": location,
+                "workplace": workplace,
+                "property_type": property_type,
+                "timestamp": timestamp,
+                "search_date": datetime.now().isoformat()
+            }
         }
-        searcher.save_results(
-            enhanced_results, f"formatted_leboncoin_{location.replace(' ', '_')}.json"
-        )
+        searcher.save_results(enhanced_results, formatted_filename)
 
         return {
             "location": location,
             "workplace": workplace,
             "property_type": property_type,
+            "timestamp": timestamp,
             "search_summary": search_result.get("search_summary", {}),
             "files_saved": [
-                f"results/raw_leboncoin_{location.replace(' ', '_')}.json",
-                f"results/formatted_leboncoin_{location.replace(' ', '_')}.json",
+                f"results/{raw_filename}",
+                f"results/{formatted_filename}",
             ],
             "property_count": len(search_result.get("properties", [])),
             "status": "success",

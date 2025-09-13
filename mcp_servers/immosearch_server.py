@@ -22,6 +22,18 @@ from scripts.leboncoin_url_generator import get_real_estate_url
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
 from scripts.travel_time import get_distance_time, reverse_geocode
 
+# Try to import W&B integration, fallback if not available
+try:
+    from scripts.wandb_integration import ensure_tracer, trace_mcp_operation
+    tracer = ensure_tracer()
+except ImportError:
+    # W&B not available, create no-op tracer and decorator
+    tracer = None
+    def trace_mcp_operation(operation_name: str):
+        def decorator(func):
+            return func
+        return decorator
+
 # Load environment variables
 load_dotenv()
 
@@ -228,6 +240,7 @@ class DVFAnalyzer:
         return stats
 
 
+@trace_mcp_operation("dvf_analysis")
 @mcp.tool()
 def analyze_dvf_data(
     code_postal: str,
@@ -339,6 +352,7 @@ def analyze_dvf_data(
         }
 
 
+@trace_mcp_operation("property_search")
 @mcp.tool()
 def search_leboncoin_properties(
     location: str, workplace: str, property_type: str = "rental", api_key: Optional[str] = None
@@ -397,6 +411,12 @@ def search_leboncoin_properties(
                         mode="transit",
                     )
 
+                    # Add W&B tracing for travel calculation
+                    if tracer and tracer.is_enabled():
+                        travel_info = tracer.trace_travel_calculation(
+                            (float(lat), float(lng)), workplace, "transit", travel_info
+                        )
+
                     prop["travel_to_work"] = {
                         "distance_km": round(travel_info["distance_m"] / 1000.0, 1),
                         "duration_min": travel_info["duration_min"],
@@ -451,7 +471,7 @@ def search_leboncoin_properties(
                 prop["key_attributes"].pop("ges", None)
                 prop["key_attributes"].pop("heating_type", None)
 
-        return {
+        result = {
             "location": location,
             "workplace": workplace,
             "property_type": property_type,
@@ -460,6 +480,12 @@ def search_leboncoin_properties(
             "returned_count": len(properties),
             "status": "success",
         }
+
+        # Add W&B tracing for property search
+        if tracer and tracer.is_enabled():
+            result = tracer.trace_property_search(location, workplace, property_type, result)
+
+        return result
 
     except Exception as e:
         return {"location": location, "error": str(e), "status": "error"}
