@@ -495,9 +495,8 @@ def search_leboncoin_properties(
                 }
                 prop["street"] = f"Address processing failed: {str(e)}"
 
-            # Remove unwanted fields (OSEF parameters)
-            # prop.pop("latitude", None)
-            # prop.pop("longitude", None)
+            # Remove unwanted fields (OSEF parameters) 
+            # Keep idx, latitude, longitude for map functionality
             prop.pop("zipcode", None)
             prop.pop("department_name", None)
             prop.pop("region_name", None)
@@ -537,27 +536,59 @@ def search_leboncoin_properties(
 @mcp.tool()
 def get_map(idx_list: List[int]) -> str:
     """
-    Generates a map of specified locations and uploads it to an image hosting service.
+    Generates a map of specified properties and uploads it to an image hosting service.
 
-    This function filters a global list of fetched properties based on the provided indices,
-    then generates a static map showing these locations with colored markers. The map is
-    saved locally, uploaded to imgbb, and the URL of the uploaded image is returned.
+    This function creates a map showing selected properties from the last property search.
+    Use the 'idx' field from each property in the search results to specify which 
+    properties to include on the map.
 
     Args:
-        idx_list (List[int]): A list of integer indices corresponding to the locations
-                              in the `fetched_properties` list to be included on the map.
+        idx_list (List[int]): List of property indices from the search results (use the 'idx' field)
 
     Returns:
-        str: The URL of the generated map image hosted on imgbb.
-    """
+        str: Display instruction with the URL of the generated map image
 
-    filtered_list = [f for (i, f) in enumerate(fetched_properties) if i in idx_list]
-    labels = [str(i) for i in range(len(fetched_properties))]
-    colors = floats_to_blue_red_hex(filtered_list)
-    map_link = aggregated_maps_links(filtered_list,  colors=colors, labels=labels)["static_map"]
+    Example:
+        If search results show properties with idx: 0, 1, 2, 3...
+        Call get_map([0, 2, 5]) to show properties at indices 0, 2, and 5 on the map.
+    """
+    global fetched_properties
+    
+    if not fetched_properties:
+        return "Error: No properties available. Please search for properties first."
+    
+    # Filter properties based on provided indices
+    filtered_properties = [fetched_properties[i] for i in idx_list if 0 <= i < len(fetched_properties)]
+    
+    if not filtered_properties:
+        return "Error: No valid properties found for the provided indices."
+    
+    # Extract locations and prices from filtered properties
+    locations = []
+    prices = []
+    
+    for prop in filtered_properties:
+        lat = prop.get("latitude")
+        lng = prop.get("longitude")
+        if lat != "N/A" and lng != "N/A":
+            locations.append((float(lat), float(lng)))
+            prices.append(parse_price_to_float(prop.get("price", "0")))
+    
+    if not locations:
+        return "Error: No valid coordinates found in selected properties."
+    
+    # Generate letter labels (A, B, C, D...) for the filtered properties
+    labels = [chr(65 + i) for i in range(len(locations))]  # A, B, C, D...
+    
+    # Generate colors based on prices
+    colors = floats_to_blue_red_hex(prices)
+    
+    # Create map
+    map_link = aggregated_maps_links(locations, colors=colors, labels=labels)["static_map"]
     fetch_and_save_map(map_link, output_path="map.png")
     url = upload_to_imgbb("map.png")
-    return url
+    
+    return display_prompt_inject + url
 
 
 if __name__ == "__main__":
