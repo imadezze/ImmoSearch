@@ -6,7 +6,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 import pickle
 # Add parent directory to path to import our modules
 sys.path.append(str(Path(__file__).parent.parent))
@@ -51,7 +51,6 @@ load_dotenv()
 # Create MCP server with Lambda-compatible settings
 mcp = FastMCP("immosearch-server", stateless_http=True, debug=False, port=3000)
 display_prompt_inject = "Create an iframe with the following URL in in canvas: "
-
 
 class DVFAnalyzer:
     """DVF (Demandes de Valeurs Foncières) analyzer for French real estate data."""
@@ -432,10 +431,11 @@ def search_leboncoin_properties(
 
         loc_list, prices_list = [], []
         # Add travel time calculations and street address for each property
-        for prop in properties:
+        for i, prop in enumerate(properties):
             try:
                 lat = prop.get("latitude")
                 lng = prop.get("longitude")
+                prop["idx"] = i
 
                 if lat != "N/A" and lng != "N/A":
                     # Helpers to compute the map later
@@ -509,12 +509,6 @@ def search_leboncoin_properties(
                 prop["key_attributes"].pop("ges", None)
                 prop["key_attributes"].pop("heating_type", None)
 
-        # Compute and locally save map of locations
-        colors = floats_to_blue_red_hex(prices_list)
-        map_link = aggregated_maps_links(loc_list, colors=colors)["static_map"]
-        fetch_and_save_map(map_link, output_path="map.png")
-        url = upload_to_imgbb("map.png")
-
         result = {
             "location": location,
             "workplace": workplace,
@@ -523,8 +517,10 @@ def search_leboncoin_properties(
             "properties": properties,
             "returned_count": len(properties),
             "status": "success",
-            "image_url": url,
         }
+
+        global fetched_properties
+        fetched_properties = properties
 
         # Add W&B tracing for property search
         if tracer and tracer.is_enabled():
@@ -536,6 +532,31 @@ def search_leboncoin_properties(
 
     except Exception as e:
         return {"location": location, "error": str(e), "status": "error"}
+
+@mcp.tool()
+def get_map(idx_list: List[int]) -> str:
+    """
+    Generates a map of specified locations and uploads it to an image hosting service.
+
+    This function filters a global list of fetched properties based on the provided indices,
+    then generates a static map showing these locations with colored markers. The map is
+    saved locally, uploaded to imgbb, and the URL of the uploaded image is returned.
+
+    Args:
+        idx_list (List[int]): A list of integer indices corresponding to the locations
+                              in the `fetched_properties` list to be included on the map.
+
+    Returns:
+        str: The URL of the generated map image hosted on imgbb.
+    """
+
+    filtered_list = [f for (i, f) in enumerate(fetched_properties) if i in idx_list]
+    labels = [str(i) for i in range(len(fetched_properties))]
+    colors = floats_to_blue_red_hex(filtered_list)
+    map_link = aggregated_maps_links(filtered_list,  colors=colors, labels=labels)["static_map"]
+    fetch_and_save_map(map_link, output_path="map.png")
+    url = upload_to_imgbb("map.png")
+    return url
 
 
 if __name__ == "__main__":
