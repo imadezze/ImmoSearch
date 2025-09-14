@@ -193,7 +193,7 @@ def parse_price_to_float(x):
         return None
     if isinstance(x, str):
         s = x.strip()
-        # Remove enclosing brackets like "[840]"
+        # Remove enclosing brackets like x"[840]"
         if s.startswith("[") and s.endswith("]"):
             s = s[1:-1]
         s = s.replace("\xa0", " ")

@@ -7,7 +7,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
-
+import pickle
 # Add parent directory to path to import our modules
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -512,8 +512,8 @@ def search_leboncoin_properties(
         # Compute and locally save map of locations
         colors = floats_to_blue_red_hex(prices_list)
         map_link = aggregated_maps_links(loc_list, colors=colors)["static_map"]
-        fetch_and_save_map(map_link, output_path="tmp/map.png")
-        url = upload_to_imgbb("tmp/map.png")
+        fetch_and_save_map(map_link, output_path="map.png")
+        url = upload_to_imgbb("map.png")
 
         result = {
             "location": location,
@@ -523,7 +523,7 @@ def search_leboncoin_properties(
             "properties": properties,
             "returned_count": len(properties),
             "status": "success",
-            "url": display_prompt_inject + url,
+            "image_url": url,
         }
 
         # Add W&B tracing for property search
