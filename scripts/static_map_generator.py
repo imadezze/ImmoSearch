@@ -123,6 +123,9 @@ def fetch_and_save_map(url, output_path="paris_landmarks_map.png"):
     # Replace with your actual API key or use environment variables
     # Define the Static Map URL with your landmarks
 
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
     # Fetch the image from Google Maps
     response = requests.get(url)
 
@@ -218,5 +221,5 @@ if __name__ == "__main__":
     ]
     links = aggregated_maps_links(places, colors=["red", "#00FF00", "blue"],  # hex ok; will be converted to 0x00FF00
     labels=["E", "L", "S"])
-    fetch_and_save_map(links["static_map"], "../tmp/static_map.png")
-    print(upload_to_imgbb("../tmp/static_map.png"))
+    fetch_and_save_map(links["static_map"], "/tmp/static_map.png")
+    print(upload_to_imgbb("/tmp/static_map.png"))
