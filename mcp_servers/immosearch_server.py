@@ -585,8 +585,8 @@ def get_map(idx_list: List[int]) -> str:
     
     # Create map
     map_link = aggregated_maps_links(locations, colors=colors, labels=labels)["static_map"]
-    fetch_and_save_map(map_link, output_path="map.png")
-    url = upload_to_imgbb("map.png")
+    fetch_and_save_map(map_link, output_path="tmp/map.png")
+    url = upload_to_imgbb("tmp/map.png")
     
     return display_prompt_inject + url
 
