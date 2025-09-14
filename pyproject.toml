@@ -1,0 +1,24 @@
+[project]
+name = "immosearch-server"
+version = "1.0.0"
+description = "MCP server exposing DVF (Demandes de Valeurs Foncières) analysis tools"
+authors = [{name = "ImmoSearch Team"}]
+readme = "Readme.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "mcp>=1.0.0",
+    "pgeocode>=0.4.1",
+    "wandb>=0.15.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
