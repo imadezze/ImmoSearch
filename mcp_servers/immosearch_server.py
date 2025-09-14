@@ -141,8 +141,10 @@ class DVFAnalyzer:
                     loyer_5pct = round((valeur_fonciere * 5) / (12 * 100), 2)
                     loyer_6pct = round((valeur_fonciere * 6) / (12 * 100), 2)
                     loyer_7pct = round((valeur_fonciere * 7) / (12 * 100), 2)
+                    loyer_7pct = round((valeur_fonciere * 7) / (12 * 100), 2)
                     loyer_m2_5pct = round(loyer_5pct / surface_relle_bati, 2)
                     loyer_m2_6pct = round(loyer_6pct / surface_relle_bati, 2)
+                    loyer_m2_7pct = round(loyer_7pct / surface_relle_bati, 2)
                     loyer_m2_7pct = round(loyer_7pct / surface_relle_bati, 2)
 
                     item_data.update(
@@ -150,8 +152,10 @@ class DVFAnalyzer:
                             "loyer_mensuel_5pct": loyer_5pct,
                             "loyer_mensuel_6pct": loyer_6pct,
                             "loyer_mensuel_7pct": loyer_7pct,
+                            "loyer_mensuel_7pct": loyer_7pct,
                             "loyer_m2_5pct": loyer_m2_5pct,
                             "loyer_m2_6pct": loyer_m2_6pct,
+                            "loyer_m2_7pct": loyer_m2_7pct,
                             "loyer_m2_7pct": loyer_m2_7pct,
                         }
                     )
