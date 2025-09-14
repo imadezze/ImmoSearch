@@ -20,26 +20,38 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from scripts.leboncoin_url_generator import get_real_estate_url
 from scripts.piloterr_leboncoin_search import PiloterrLeboncoinSearch
+from scripts.static_map_generator import (
+    aggregated_maps_links,
+    fetch_and_save_map,
+    floats_to_blue_red_hex,
+    parse_price_to_float,
+    upload_to_imgbb,
+)
 from scripts.travel_time import get_distance_time, reverse_geocode
-from scripts.static_map_generator import aggregated_maps_links, fetch_and_save_map, upload_to_imgbb, floats_to_blue_red_hex, parse_price_to_float
+
 # Try to import W&B integration, fallback if not available
 try:
     from scripts.wandb_integration import ensure_tracer, trace_mcp_operation
+
     tracer = ensure_tracer()
 except ImportError:
     # W&B not available, create no-op tracer and decorator
     tracer = None
+
     def trace_mcp_operation(operation_name: str):
         def decorator(func):
             return func
+
         return decorator
+
 
 # Load environment variables
 load_dotenv()
 
 # Create MCP server with Lambda-compatible settings
-mcp = FastMCP("immosearch-server", stateless_http=True, debug=False)
+mcp = FastMCP("immosearch-server", stateless_http=True, debug=False, port=3000)
 display_prompt_inject = "Create an iframe with the following URL in in canvas: "
+
 
 class DVFAnalyzer:
     """DVF (Demandes de Valeurs Foncières) analyzer for French real estate data."""
@@ -223,9 +235,19 @@ class DVFAnalyzer:
 
             for item in data:
                 loyer_combined.extend(
-                    [item["loyer_mensuel_5pct"], item["loyer_mensuel_6pct"], item["loyer_mensuel_7pct"]]
+                    [
+                        item["loyer_mensuel_5pct"],
+                        item["loyer_mensuel_6pct"],
+                        item["loyer_mensuel_7pct"],
+                    ]
                 )
-                loyer_m2_combined.extend([item["loyer_m2_5pct"], item["loyer_m2_6pct"], item["loyer_m2_7pct"]])
+                loyer_m2_combined.extend(
+                    [
+                        item["loyer_m2_5pct"],
+                        item["loyer_m2_6pct"],
+                        item["loyer_m2_7pct"],
+                    ]
+                )
 
             stats = {
                 "nb_transactions": len(data),
@@ -363,7 +385,10 @@ def analyze_dvf_data(
 @trace_mcp_operation("property_search")
 @mcp.tool()
 def search_leboncoin_properties(
-    location: str, workplace: str, property_type: str = "rental", api_key: Optional[str] = None
+    location: str,
+    workplace: str,
+    property_type: str = "rental",
+    api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Search Leboncoin for properties in a specific location using Piloterr API with travel time to workplace.
@@ -503,8 +528,9 @@ def search_leboncoin_properties(
 
         # Add W&B tracing for property search
         if tracer and tracer.is_enabled():
-            result = tracer.trace_property_search(location, workplace, property_type, result)
-
+            result = tracer.trace_property_search(
+                location, workplace, property_type, result
+            )
 
         return result
 
