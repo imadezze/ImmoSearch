@@ -14,6 +14,7 @@ dependencies = [
     "mcp>=1.0.0",
     "pgeocode>=0.4.1",
     "wandb>=0.15.0",
+    "flask>=3.1.2",
 ]
 
 [build-system]
