@@ -37,8 +37,8 @@ except ImportError:
 # Load environment variables
 load_dotenv()
 
-# Create MCP server
-mcp = FastMCP("immosearch-server")
+# Create MCP server with Lambda-compatible settings
+mcp = FastMCP("immosearch-server", stateless_http=True, debug=False)
 display_prompt_inject = "Create an iframe with the following URL in in canvas: "
 
 class DVFAnalyzer:
